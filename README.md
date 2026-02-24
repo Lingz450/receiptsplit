@@ -1,77 +1,115 @@
-# Intercom
+# ReceiptSplit — P2P Bill Splitting on Trac Network
 
-This repository is a reference implementation of the **Intercom** stack on Trac Network for an **internet of agents**.
+A peer-to-peer bill splitting app built on [Trac Network](https://github.com/Trac-Systems/intercom)'s **Intercom** stack. Create shared bills, add participants, add line items, and track who has settled — all over deterministic replicated contract state. No central server.
 
-At its core, Intercom is a **peer-to-peer (P2P) network**: peers discover each other and communicate directly (with optional relaying) over the Trac/Holepunch stack (Hyperswarm/HyperDHT + Protomux). There is no central server required for sidechannel messaging.
+**Features:**
+- **bill_create** — Create a new bill (title, currency, creator name).
+- **bill_join** — Join an existing bill as a participant (by bill id and your name).
+- **bill_add_item** — Add a line item (description, amount); per-person split recalculates automatically.
+- **bill_settle** — Mark yourself as paid/settled on a bill.
+- **bill_get** — Fetch full bill details including total, per-person amount, and settled status.
+- **bill_list** — List recent bills (optional limit, max 50).
 
-Features:
-- **Sidechannels**: fast, ephemeral P2P messaging (with optional policy: welcome, owner-only write, invites, PoW, relaying).
-- **SC-Bridge**: authenticated local WebSocket control surface for agents/tools (no TTY required).
-- **Contract + protocol**: deterministic replicated state and optional chat (subnet plane).
-- **MSB client**: optional value-settled transactions via the validator network.
+Participants are identified by peer address (`tx.address`). When all participants are settled, the contract logs **"Bill fully settled!"**.
 
-Additional references: https://www.moltbook.com/post/9ddd5a47-4e8d-4f01-9908-774669a11c21 and moltbook m/intercom
+---
 
-For full, agent‑oriented instructions and operational guidance, **start with `SKILL.md`**.  
-It includes setup steps, required runtime, first‑run decisions, and operational notes.
+## Trac Address (for payouts)
 
-## What this repo is for
-- A working, pinned example to bootstrap agents and peers onto Trac Network.
-- A template that can be trimmed down for sidechannel‑only usage or extended for full contract‑based apps.
+trac1ey2t8yahmxqf6zfhgrfnd82pth7lxcve4zxrq3eqhufhgyky5jeqmg6raw
 
-## How to use
-Use the **Pear runtime only** (never native node).  
-Follow the steps in `SKILL.md` to install dependencies, run the admin peer, and join peers correctly.
+---
 
-## Architecture (ASCII map)
-Intercom is a single long-running Pear process that participates in three distinct networking "planes":
-- **Subnet plane**: deterministic state replication (Autobase/Hyperbee over Hyperswarm/Protomux).
-- **Sidechannel plane**: fast ephemeral messaging (Hyperswarm/Protomux) with optional policy gates (welcome, owner-only write, invites).
-- **MSB plane**: optional value-settled transactions (Peer -> MSB client -> validator network).
+## Quick start (Pear runtime only)
 
-```text
-                          Pear runtime (mandatory)
-                pear run . --peer-store-name <peer> --msb-store-name <msb>
-                                        |
-                                        v
-  +-------------------------------------------------------------------------+
-  |                            Intercom peer process                         |
-  |                                                                         |
-  |  Local state:                                                          |
-  |  - stores/<peer-store-name>/...   (peer identity, subnet state, etc)    |
-  |  - stores/<msb-store-name>/...    (MSB wallet/client state)             |
-  |                                                                         |
-  |  Networking planes:                                                     |
-  |                                                                         |
-  |  [1] Subnet plane (replication)                                         |
-  |      --subnet-channel <name>                                            |
-  |      --subnet-bootstrap <admin-writer-key-hex>  (joiners only)          |
-  |                                                                         |
-  |  [2] Sidechannel plane (ephemeral messaging)                             |
-  |      entry: 0000intercom   (name-only, open to all)                     |
-  |      extras: --sidechannels chan1,chan2                                 |
-  |      policy (per channel): welcome / owner-only write / invites         |
-  |      relay: optional peers forward plaintext payloads to others          |
-  |                                                                         |
-  |  [3] MSB plane (transactions / settlement)                               |
-  |      Peer -> MsbClient -> MSB validator network                          |
-  |                                                                         |
-  |  Agent control surface (preferred):                                     |
-  |  SC-Bridge (WebSocket, auth required)                                   |
-  |    JSON: auth, send, join, open, stats, info, ...                       |
-  +------------------------------+------------------------------+-----------+
-                                 |                              |
-                                 | SC-Bridge (ws://host:port)   | P2P (Hyperswarm)
-                                 v                              v
-                       +-----------------+            +-----------------------+
-                       | Agent / tooling |            | Other peers (P2P)     |
-                       | (no TTY needed) |<---------->| subnet + sidechannels |
-                       +-----------------+            +-----------------------+
+Use **Pear runtime only** (never native Node). See `SKILL.md` in this repo for full setup (Node 22+, Pear, subnet channel, admin/joiner).
 
-  Optional for local testing:
-  - --dht-bootstrap "<host:port,host:port>" overrides the peer's HyperDHT bootstraps
-    (all peers that should discover each other must use the same list).
+**Admin (create subnet):**
+```bash
+npm install
+pear run . --peer-store-name admin --msb-store-name admin-msb --subnet-channel receiptsplit-v1
+```
+
+**Joiner:** Copy the admin **Peer Writer** key (hex) from the admin banner, then:
+```bash
+pear run . --peer-store-name joiner --msb-store-name joiner-msb \
+  --subnet-channel receiptsplit-v1 \
+  --subnet-bootstrap <admin-writer-key-hex>
 ```
 
 ---
-If you plan to build your own app, study the existing contract/protocol and remove example logic as needed (see `SKILL.md`).
+
+## Usage (all 6 commands)
+
+Trigger transactions with `/tx --command '...'`. Use `--sim 1` to dry-run before broadcasting.
+
+### 1. Create a bill
+```bash
+/tx --command '{ "op": "bill_create", "title": "Team Dinner", "currency": "USD", "creator_name": "Alice" }'
+```
+
+### 2. Join a bill
+```bash
+/tx --command '{ "op": "bill_join", "id": 1, "name": "Bob" }'
+/tx --command '{ "op": "bill_join", "id": 1, "name": "Carol" }'
+```
+
+### 3. Add line items
+```bash
+/tx --command '{ "op": "bill_add_item", "id": 1, "description": "Pizza", "amount": 36 }'
+/tx --command '{ "op": "bill_add_item", "id": 1, "description": "Drinks", "amount": 12 }'
+```
+
+### 4. Get bill (total, per-person split, settled status)
+```bash
+/tx --command '{ "op": "bill_get", "id": 1 }'
+```
+
+### 5. Mark yourself as settled
+```bash
+/tx --command '{ "op": "bill_settle", "id": 1 }'
+```
+
+### 6. List recent bills
+```bash
+/tx --command '{ "op": "bill_list", "limit": 10 }'
+```
+
+---
+
+## Example session: Alice, Bob, Carol
+
+- **Alice** creates the bill and adds items:
+  - `/tx --command '{ "op": "bill_create", "title": "Weekend BBQ", "currency": "USD", "creator_name": "Alice" }'`
+  - `/tx --command '{ "op": "bill_add_item", "id": 1, "description": "Grill", "amount": 45 }'`
+  - `/tx --command '{ "op": "bill_add_item", "id": 1, "description": "Sides", "amount": 21 }'`
+
+- **Bob** and **Carol** join:
+  - Bob: `/tx --command '{ "op": "bill_join", "id": 1, "name": "Bob" }'`
+  - Carol: `/tx --command '{ "op": "bill_join", "id": 1, "name": "Carol" }'`
+
+- **Alice** checks the split:
+  - `/tx --command '{ "op": "bill_get", "id": 1 }'`
+  - Total 66, 3 participants → **22 per person**. Each sees who has settled.
+
+- All three settle one by one:
+  - Alice: `/tx --command '{ "op": "bill_settle", "id": 1 }'`
+  - Bob: `/tx --command '{ "op": "bill_settle", "id": 1 }'`
+  - Carol: `/tx --command '{ "op": "bill_settle", "id": 1 }'`
+
+- After the last settle, the contract logs: **Bill fully settled!**
+
+---
+
+## Competition links
+
+- Intercom (template): [https://github.com/Trac-Systems/intercom](https://github.com/Trac-Systems/intercom)
+- Awesome Intercom (accepted apps): [https://github.com/Trac-Systems/awesome-intercom](https://github.com/Trac-Systems/awesome-intercom)
+
+---
+
+## What this repo is
+
+- A **fork** of Trac-Systems/intercom with the default contract/protocol replaced by **ReceiptSplit** (bill create/join/add_item/settle/get/list).
+- Uses the same **Pear** runtime, subnet, and sidechannel stack; only `contract/contract.js` and `contract/protocol.js` are app-specific.
+- For agent and operational details, see **`SKILL.md`** in this repo.
