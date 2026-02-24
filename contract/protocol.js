@@ -99,8 +99,15 @@ class SampleProtocol extends Protocol {
 
   /**
    * ReceiptSplit: map tx commands to contract functions.
-   * Commands: bill_create, bill_join, bill_add_item, bill_remove_item, bill_settle, bill_close,
-   *          bill_leave, bill_note, bill_get, bill_export, bill_list, bill_stats
+   * Commands: bill_create, bill_join, bill_add_item, bill_remove_item, bill_settle, bill_pay,
+   * bill_close, bill_leave, bill_note, bill_get, bill_balance, bill_activity, bill_export,
+   * bill_list, bill_stats, bill_update, bill_unsettle, bill_reopen, bill_tip,
+   * bill_set_weights, bill_archive, bill_unarchive,
+   * bill_edit_item, bill_debt, bill_copy, bill_deadline, bill_rename,
+   * bill_add_editor, bill_remove_editor, bill_list_editors,
+   * bill_anchor_receipt, bill_set_invite, bill_join_code,
+   * template_save, template_create, template_get, template_list,
+   * group_create, group_add_bill, group_get, group_list
    */
   mapTxCommand(command) {
     let obj = { type: '', value: null };
@@ -129,6 +136,7 @@ class SampleProtocol extends Protocol {
         description: json.description ?? '',
         amount: json.amount ?? 0
       };
+      if (json.split_between !== undefined) obj.value.split_between = json.split_between;
       return obj;
     }
     if (json.op === 'bill_remove_item') {
@@ -136,29 +144,14 @@ class SampleProtocol extends Protocol {
       obj.value = { id: json.id ?? 0, item_index: json.item_index ?? 0 };
       return obj;
     }
-    if (json.op === 'bill_assign_item') {
-      obj.type = 'billAssignItem';
-      obj.value = { id: json.id ?? 0, item_index: json.item_index ?? 0, assignees: json.assignees ?? '' };
-      return obj;
-    }
-    if (json.op === 'bill_set_payer') {
-      obj.type = 'billSetPayer';
-      obj.value = { id: json.id ?? 0, item_index: json.item_index ?? 0, payer_address: json.payer_address ?? '' };
-      return obj;
-    }
-    if (json.op === 'bill_set_split_mode') {
-      obj.type = 'billSetSplitMode';
-      obj.value = { id: json.id ?? 0, mode: json.mode ?? '' };
-      return obj;
-    }
-    if (json.op === 'bill_set_weight') {
-      obj.type = 'billSetWeight';
-      obj.value = { id: json.id ?? 0, weight: json.weight ?? 1 };
-      return obj;
-    }
     if (json.op === 'bill_settle') {
       obj.type = 'billSettle';
       obj.value = { id: json.id ?? 0, proof: json.proof ?? '' };
+      return obj;
+    }
+    if (json.op === 'bill_pay') {
+      obj.type = 'billPay';
+      obj.value = { id: json.id ?? 0, amount: json.amount ?? 0, proof: json.proof ?? '' };
       return obj;
     }
     if (json.op === 'bill_close') {
@@ -186,9 +179,15 @@ class SampleProtocol extends Protocol {
       obj.value = { id: json.id ?? 0 };
       return obj;
     }
-    if (json.op === 'bill_balances') {
-      obj.type = 'billBalances';
+    if (json.op === 'bill_balance') {
+      obj.type = 'billBalance';
       obj.value = { id: json.id ?? 0 };
+      return obj;
+    }
+    if (json.op === 'bill_activity') {
+      obj.type = 'billActivity';
+      obj.value = { id: json.id ?? 0 };
+      if (json.limit !== undefined) obj.value.limit = json.limit;
       return obj;
     }
     if (json.op === 'bill_list') {
@@ -199,6 +198,9 @@ class SampleProtocol extends Protocol {
         tag: json.tag ?? '',
         creator_address: json.creator_address ?? ''
       };
+      if (json.include_archived !== undefined) obj.value.include_archived = String(json.include_archived);
+      if (json.closed !== undefined) obj.value.closed = String(json.closed);
+      if (json.settled !== undefined) obj.value.settled = String(json.settled);
       return obj;
     }
     if (json.op === 'bill_stats') {
@@ -229,7 +231,129 @@ class SampleProtocol extends Protocol {
       obj.value = { id: json.id ?? 0 };
       if (json.amount !== undefined) obj.value.amount = json.amount;
       if (json.percent !== undefined) obj.value.percent = json.percent;
+      if (json.split_between !== undefined) obj.value.split_between = json.split_between;
       return obj;
+    }
+    if (json.op === 'bill_set_weights') {
+      obj.type = 'billSetWeights';
+      obj.value = { id: json.id ?? 0, weights: json.weights ?? '' };
+      return obj;
+    }
+    if (json.op === 'bill_archive') {
+      obj.type = 'billArchive';
+      obj.value = { id: json.id ?? 0 };
+      return obj;
+    }
+    if (json.op === 'bill_unarchive') {
+      obj.type = 'billUnarchive';
+      obj.value = { id: json.id ?? 0 };
+      return obj;
+    }
+    if (json.op === 'bill_edit_item') {
+      obj.type = 'billEditItem';
+      obj.value = { id: json.id ?? 0, item_index: json.item_index ?? 0 };
+      if (json.description !== undefined) obj.value.description = json.description;
+      if (json.amount !== undefined) obj.value.amount = json.amount;
+      if (json.split_between !== undefined) obj.value.split_between = json.split_between;
+      return obj;
+    }
+    if (json.op === 'bill_debt') {
+      obj.type = 'billDebt';
+      obj.value = { id: json.id ?? 0 };
+      return obj;
+    }
+    if (json.op === 'bill_copy') {
+      obj.type = 'billCopy';
+      obj.value = { id: json.id ?? 0, title: json.title ?? '', creator_name: json.creator_name ?? '' };
+      if (json.currency !== undefined) obj.value.currency = json.currency;
+      if (json.tags !== undefined) obj.value.tags = json.tags;
+      return obj;
+    }
+    if (json.op === 'bill_deadline') {
+      obj.type = 'billDeadline';
+      obj.value = { id: json.id ?? 0 };
+      if (json.deadline !== undefined) obj.value.deadline = json.deadline;
+      return obj;
+    }
+    if (json.op === 'bill_rename') {
+      obj.type = 'billRename';
+      obj.value = { id: json.id ?? 0, name: json.name ?? '' };
+      return obj;
+    }
+    if (json.op === 'bill_add_editor') {
+      obj.type = 'billAddEditor'
+      obj.value = { id: json.id ?? 0, editor_address: json.editor_address ?? '' }
+      return obj
+    }
+    if (json.op === 'bill_remove_editor') {
+      obj.type = 'billRemoveEditor'
+      obj.value = { id: json.id ?? 0, editor_address: json.editor_address ?? '' }
+      return obj
+    }
+    if (json.op === 'bill_list_editors') {
+      obj.type = 'billListEditors'
+      obj.value = { id: json.id ?? 0 }
+      return obj
+    }
+    if (json.op === 'bill_anchor_receipt') {
+      obj.type = 'billAnchorReceipt'
+      obj.value = { id: json.id ?? 0, hash: json.hash ?? '' }
+      if (json.note !== undefined) obj.value.note = json.note
+      return obj
+    }
+    if (json.op === 'bill_set_invite') {
+      obj.type = 'billSetInvite'
+      obj.value = { id: json.id ?? 0, code: json.code ?? '' }
+      if (json.ttl_sec !== undefined) obj.value.ttl_sec = json.ttl_sec
+      return obj
+    }
+    if (json.op === 'bill_join_code') {
+      obj.type = 'billJoinCode'
+      obj.value = { code: json.code ?? '', name: json.name ?? '' }
+      return obj
+    }
+    if (json.op === 'template_save') {
+      obj.type = 'templateSave'
+      obj.value = { id: json.id ?? 0, name: json.name ?? '' }
+      return obj
+    }
+    if (json.op === 'template_create') {
+      obj.type = 'templateCreate'
+      obj.value = { template_id: json.template_id ?? 0, creator_name: json.creator_name ?? '' }
+      if (json.title !== undefined) obj.value.title = json.title
+      return obj
+    }
+    if (json.op === 'template_get') {
+      obj.type = 'templateGet'
+      obj.value = { template_id: json.template_id ?? 0 }
+      return obj
+    }
+    if (json.op === 'template_list') {
+      obj.type = 'templateList'
+      obj.value = {}
+      if (json.limit !== undefined) obj.value.limit = json.limit
+      return obj
+    }
+    if (json.op === 'group_create') {
+      obj.type = 'groupCreate'
+      obj.value = { name: json.name ?? '' }
+      return obj
+    }
+    if (json.op === 'group_add_bill') {
+      obj.type = 'groupAddBill'
+      obj.value = { group_id: json.group_id ?? 0, bill_id: json.bill_id ?? 0 }
+      return obj
+    }
+    if (json.op === 'group_get') {
+      obj.type = 'groupGet'
+      obj.value = { group_id: json.group_id ?? 0 }
+      return obj
+    }
+    if (json.op === 'group_list') {
+      obj.type = 'groupList'
+      obj.value = {}
+      if (json.limit !== undefined) obj.value.limit = json.limit
+      return obj
     }
     return null;
   }
@@ -239,26 +363,45 @@ class SampleProtocol extends Protocol {
     console.log('- ReceiptSplit Commands:');
     console.log('- /tx --command \'{ "op": "bill_create", "title": "Dinner", "currency": "USD", "creator_name": "Alice", "tags": "food,team" }\'');
     console.log('- /tx --command \'{ "op": "bill_join", "id": 1, "name": "Bob" }\'');
-    console.log('- /tx --command \'{ "op": "bill_add_item", "id": 1, "description": "Pizza", "amount": 30 }\'');
+    console.log('- /tx --command \'{ "op": "bill_add_item", "id": 1, "description": "Pizza", "amount": 30, "split_between": "trac1...,trac1..." }\'');
     console.log('- /tx --command \'{ "op": "bill_remove_item", "id": 1, "item_index": 0 }\'');
-    console.log('- /tx --command \'{ "op": "bill_assign_item", "id": 1, "item_index": 0, "assignees": "trac1...,trac1..." }\'');
-    console.log('- /tx --command \'{ "op": "bill_set_payer", "id": 1, "item_index": 0, "payer_address": "trac1..." }\'');
-    console.log('- /tx --command \'{ "op": "bill_set_split_mode", "id": 1, "mode": "weights" }\'');
-    console.log('- /tx --command \'{ "op": "bill_set_weight", "id": 1, "weight": 2 }\'');
     console.log('- /tx --command \'{ "op": "bill_settle", "id": 1, "proof": "txid-abc123" }\'');
+    console.log('- /tx --command \'{ "op": "bill_pay", "id": 1, "amount": 12.5, "proof": "cash" }\'');
     console.log('- /tx --command \'{ "op": "bill_close", "id": 1 }\'');
     console.log('- /tx --command \'{ "op": "bill_leave", "id": 1 }\'');
     console.log('- /tx --command \'{ "op": "bill_note", "id": 1, "text": "Paid in cash" }\'');
     console.log('- /tx --command \'{ "op": "bill_get", "id": 1 }\'');
-    console.log('- /tx --command \'{ "op": "bill_balances", "id": 1 }\'');
+    console.log('- /tx --command \'{ "op": "bill_balance", "id": 1 }\'');
+    console.log('- /tx --command \'{ "op": "bill_activity", "id": 1, "limit": 30 }\'');
     console.log('- /tx --command \'{ "op": "bill_export", "id": 1 }\'');
-    console.log('- /tx --command \'{ "op": "bill_list", "limit": 10, "currency": "USD", "tag": "food" }\'');
+    console.log('- /tx --command \'{ "op": "bill_list", "limit": 10, "currency": "USD", "tag": "food", "closed": false }\'');
     console.log('- /tx --command \'{ "op": "bill_stats" }\'');
     console.log('- /tx --command \'{ "op": "bill_update", "id": 1, "title": "New Title", "currency": "EUR", "tags": "food" }\'');
     console.log('- /tx --command \'{ "op": "bill_unsettle", "id": 1 }\'');
     console.log('- /tx --command \'{ "op": "bill_reopen", "id": 1 }\'');
-    console.log('- /tx --command \'{ "op": "bill_tip", "id": 1, "amount": 10 }\'');
-    console.log('- /tx --command \'{ "op": "bill_tip", "id": 1, "percent": 18 }\'');
+    console.log('- /tx --command \'{ "op": "bill_tip", "id": 1, "amount": 10, "split_between": "trac1..." }\'');
+    console.log('- /tx --command \'{ "op": "bill_set_weights", "id": 1, "weights": "trac1a=2,trac1b=1" }\'');
+    console.log('- /tx --command \'{ "op": "bill_archive", "id": 1 }\'');
+    console.log('- /tx --command \'{ "op": "bill_unarchive", "id": 1 }\'');
+    console.log('- /tx --command \'{ "op": "bill_edit_item", "id": 1, "item_index": 0, "description": "Salad", "amount": 15 }\'');
+    console.log('- /tx --command \'{ "op": "bill_debt", "id": 1 }\'');
+    console.log('- /tx --command \'{ "op": "bill_copy", "id": 1, "title": "March Dinner", "creator_name": "Alice" }\'');
+    console.log('- /tx --command \'{ "op": "bill_deadline", "id": 1, "deadline": "2026-03-01" }\'');
+    console.log('- /tx --command \'{ "op": "bill_rename", "id": 1, "name": "Alexandra" }\'');
+    console.log('- /tx --command \'{ "op": "bill_add_editor", "id": 1, "editor_address": "trac1..." }\'');
+    console.log('- /tx --command \'{ "op": "bill_remove_editor", "id": 1, "editor_address": "trac1..." }\'');
+    console.log('- /tx --command \'{ "op": "bill_list_editors", "id": 1 }\'');
+    console.log('- /tx --command \'{ "op": "bill_anchor_receipt", "id": 1, "hash": "sha256-hex...", "note": "photo #1" }\'');
+    console.log('- /tx --command \'{ "op": "bill_set_invite", "id": 1, "code": "DINNER-2026", "ttl_sec": 86400 }\'');
+    console.log('- /tx --command \'{ "op": "bill_join_code", "code": "DINNER-2026", "name": "Bob" }\'');
+    console.log('- /tx --command \'{ "op": "template_save", "id": 1, "name": "Monthly dinner" }\'');
+    console.log('- /tx --command \'{ "op": "template_list", "limit": 10 }\'');
+    console.log('- /tx --command \'{ "op": "template_get", "template_id": 1 }\'');
+    console.log('- /tx --command \'{ "op": "template_create", "template_id": 1, "creator_name": "Alice", "title": "April dinner" }\'');
+    console.log('- /tx --command \'{ "op": "group_create", "name": "NYC Trip" }\'');
+    console.log('- /tx --command \'{ "op": "group_add_bill", "group_id": 1, "bill_id": 3 }\'');
+    console.log('- /tx --command \'{ "op": "group_get", "group_id": 1 }\'');
+    console.log('- /tx --command \'{ "op": "group_list", "limit": 10 }\'');
     console.log(' ');
     console.log('- Utilities:');
     console.log('- /get --key " " [--confirmed true|false] | reads subnet state key (confirmed defaults to true).');

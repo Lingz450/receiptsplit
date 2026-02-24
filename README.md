@@ -1,56 +1,77 @@
-# ReceiptSplit — P2P Bill Splitting on Trac Network
+# ReceiptSplit - P2P Bill Splitting on Trac Network
 
-A **full-featured** peer-to-peer bill splitting app built on [Trac Network](https://github.com/Trac-Systems/intercom)'s **Intercom** stack. Create shared bills, add participants, add or remove line items, attach notes, lock bills, and track who has settled — with optional settlement proof. All state is deterministic and replicated; no central server.
+ReceiptSplit is a peer-to-peer bill splitting app built on the Trac Network Intercom stack.
+State is deterministic and replicated across peers with no central server.
 
-Participants are identified by peer address (`tx.address`). When all participants are settled, the contract logs **"Bill fully settled!"**.
+Participants are identified by `tx.address`. When every participant has paid their share, the contract logs `Bill fully settled!`.
 
 ---
 
 ## Trac Address (for payouts)
 
-trac1ey2t8yahmxqf6zfhgrfnd82pth7lxcve4zxrq3eqhufhgyky5jeqmg6raw
+`trac1ey2t8yahmxqf6zfhgrfnd82pth7lxcve4zxrq3eqhufhgyky5jeqmg6raw`
 
 ---
 
-## Features (17 commands)
+## Features (41 commands)
 
 | Command | Description |
-|--------|-------------|
-| **bill_create** | Create a bill (title, currency, creator name, optional tags). |
-| **bill_join** | Join a bill as participant (id, name). Rejected if bill is closed. |
-| **bill_add_item** | Add a line item (id, description, amount). Per-person split recalculates. |
-| **bill_remove_item** | Remove a line item by index (id, item_index). Creator/participants; bill must be open. |
-| **bill_assign_item** | Assign an item to specific participants (id, item_index, assignees). Used for itemized splits. |
-| **bill_set_payer** | Set who paid for an item (id, item_index, payer_address). |
-| **bill_set_split_mode** | Set split mode: `equal`, `weights`, or `itemized` (creator only). |
-| **bill_set_weight** | Set your own weight for weighted splits (id, weight). |
-| **bill_settle** | Mark yourself as paid (id, optional proof e.g. txid or "paid cash"). |
-| **bill_close** | Creator locks the bill: no more joins or item add/remove. |
-| **bill_leave** | Leave a bill (id). Only if you haven’t settled; creator cannot leave. |
-| **bill_note** | Add a note to a bill (id, text). Up to 10 notes per bill. |
-| **bill_get** | Full bill details: items, participants, notes, tags, total, perPerson, settled, closed. |
-| **bill_balances** | Show paid/owed/net per participant for the current split mode. |
-| **bill_export** | Export bill as JSON string (for backup or sharing). |
-| **bill_list** | List bills with optional filters: limit, currency, tag, creator_address. |
-| **bill_stats** | Global stats: total bills, participants, items, amount, closed/settled counts, by currency. |
-| **bill_update** | Creator updates a bill’s title, currency, and/or tags (bill must be open). |
-| **bill_unsettle** | Reverse your own settlement (bill must not be fully settled yet). |
-| **bill_reopen** | Creator reopens a closed bill (allows joins and item changes again). |
-| **bill_tip** | Add a tip to the bill — flat amount or percentage of current total. |
+|---|---|
+| `bill_create` | Create bill with title, currency, creator name, optional tags. |
+| `bill_join` | Join a bill as participant. |
+| `bill_add_item` | Add item with amount and optional `split_between` addresses. |
+| `bill_remove_item` | Remove item by index. |
+| `bill_edit_item` | Edit an existing item in-place (description, amount, and/or split_between). |
+| `bill_settle` | Pay your full remaining balance, optional proof. |
+| `bill_pay` | Add partial payment amount, optional proof. |
+| `bill_close` | Creator closes bill for edits/joins. |
+| `bill_reopen` | Creator reopens a closed bill. |
+| `bill_leave` | Participant leaves bill (with safety checks). |
+| `bill_note` | Add note to bill (up to 25). |
+| `bill_rename` | Update your own display name on a bill. |
+| `bill_add_editor` | Creator grants an editor permission (edit items). |
+| `bill_remove_editor` | Creator revokes an editor permission. |
+| `bill_list_editors` | List editors on a bill. |
+| `bill_anchor_receipt` | Anchor a receipt hash + optional note in contract state. |
+| `bill_set_invite` | Creator sets an invite code (optional ttl). |
+| `bill_join_code` | Join a bill using an invite code + your name. |
+| `bill_get` | Full bill details including weighted ledger and breakdown. |
+| `bill_balance` | Per-participant due/paid/remaining summary. |
+| `bill_debt` | Optimal debt simplification — minimal transfers to settle all balances. |
+| `bill_activity` | Recent bill activity log entries. |
+| `bill_export` | Export full bill data as JSON string. |
+| `bill_copy` | Copy a bill's items into a new bill (great for recurring expenses). |
+| `template_save` | Save a bill’s metadata as a reusable template. |
+| `template_list` | List recent templates. |
+| `template_get` | Get template details. |
+| `template_create` | Create a new bill from a template. |
+| `group_create` | Create a group to collect multiple bills (trip, project, household). |
+| `group_add_bill` | Add a bill to a group. |
+| `group_get` | Fetch a group with its bill summaries. |
+| `group_list` | List recent groups. |
+| `bill_list` | List bills with filters (`currency`, `tag`, `creator_address`, `closed`, `settled`, `include_archived`). |
+| `bill_stats` | Global stats including paid/outstanding totals and tag/currency counts. |
+| `bill_update` | Creator updates title, currency, tags (open bills). |
+| `bill_unsettle` | Remove your payment/settled state (unless fully settled). |
+| `bill_tip` | Add flat or percent tip, optional `split_between`. |
+| `bill_set_weights` | Creator sets weighted split map (`addr=2,addr2=1`). |
+| `bill_deadline` | Creator sets (or clears) a payment deadline string on a bill. |
+| `bill_archive` | Creator archives a bill (also closes it). |
+| `bill_unarchive` | Creator unarchives a bill. |
 
 ---
 
-## Quick start (Pear runtime only)
+## Quick Start (Pear Runtime Only)
 
-Use **Pear runtime only** (never native Node). See `SKILL.md` in this repo for full setup (Node 22+, Pear, subnet channel, admin/joiner).
+Use Pear runtime (not native Node process invocation).
 
-**Admin (create subnet):**
+Admin:
 ```bash
 npm install
 pear run . --peer-store-name admin --msb-store-name admin-msb --subnet-channel receiptsplit-v1
 ```
 
-**Joiner:** Copy the admin **Peer Writer** key (hex) from the admin banner, then:
+Joiner:
 ```bash
 pear run . --peer-store-name joiner --msb-store-name joiner-msb \
   --subnet-channel receiptsplit-v1 \
@@ -59,175 +80,127 @@ pear run . --peer-store-name joiner --msb-store-name joiner-msb \
 
 ---
 
-## Usage (all 17 commands)
+## Usage Examples
 
-Trigger transactions with `/tx --command '...'`. Use `--sim 1` to dry-run before broadcasting.
-
-### Create a bill (with optional tags)
+Create:
 ```bash
 /tx --command '{ "op": "bill_create", "title": "Team Dinner", "currency": "USD", "creator_name": "Alice", "tags": "food,team" }'
 ```
 
-### Join a bill
+Join:
 ```bash
 /tx --command '{ "op": "bill_join", "id": 1, "name": "Bob" }'
-/tx --command '{ "op": "bill_join", "id": 1, "name": "Carol" }'
 ```
 
-### Add line items
+Add items (global and targeted):
 ```bash
 /tx --command '{ "op": "bill_add_item", "id": 1, "description": "Pizza", "amount": 36 }'
-/tx --command '{ "op": "bill_add_item", "id": 1, "description": "Drinks", "amount": 12 }'
+/tx --command '{ "op": "bill_add_item", "id": 1, "description": "Wine", "amount": 30, "split_between": "trac1bob...,trac1carol..." }'
 ```
 
-### Remove a line item (by index, 0-based)
+Set weighted split (creator):
 ```bash
-/tx --command '{ "op": "bill_remove_item", "id": 1, "item_index": 0 }'
+/tx --command '{ "op": "bill_set_weights", "id": 1, "weights": "trac1alice...=2,trac1bob...=1,trac1carol...=1" }'
 ```
 
-### Advanced split mode (creator) + weights (each participant)
-
-Set split mode:
+Partial payment and full settle:
 ```bash
-/tx --command '{ "op": "bill_set_split_mode", "id": 1, "mode": "weights" }'
-```
-
-Each participant sets their own weight:
-```bash
-/tx --command '{ "op": "bill_set_weight", "id": 1, "weight": 2 }'
-```
-
-### Itemized splitting (assign items to specific people)
-
-Switch to itemized:
-```bash
-/tx --command '{ "op": "bill_set_split_mode", "id": 1, "mode": "itemized" }'
-```
-
-Assign item index 0 to specific participants (comma-separated peer addresses):
-```bash
-/tx --command '{ "op": "bill_assign_item", "id": 1, "item_index": 0, "assignees": "trac1...,trac1..." }'
-```
-
-Set who paid for item index 0:
-```bash
-/tx --command '{ "op": "bill_set_payer", "id": 1, "item_index": 0, "payer_address": "trac1..." }'
-```
-
-### Get bill (full details)
-```bash
-/tx --command '{ "op": "bill_get", "id": 1 }'
-```
-
-### Show balances (paid/owed/net)
-```bash
-/tx --command '{ "op": "bill_balances", "id": 1 }'
-```
-
-### Settle with optional proof
-```bash
-/tx --command '{ "op": "bill_settle", "id": 1 }'
+/tx --command '{ "op": "bill_pay", "id": 1, "amount": 10, "proof": "cash" }'
 /tx --command '{ "op": "bill_settle", "id": 1, "proof": "txid-abc123" }'
 ```
 
-### Close a bill (creator only)
+Inspect:
 ```bash
-/tx --command '{ "op": "bill_close", "id": 1 }'
+/tx --command '{ "op": "bill_get", "id": 1 }'
+/tx --command '{ "op": "bill_balance", "id": 1 }'
+/tx --command '{ "op": "bill_activity", "id": 1, "limit": 30 }'
 ```
 
-### Leave a bill (non-creator, only if not settled)
+Tip:
 ```bash
-/tx --command '{ "op": "bill_leave", "id": 1 }'
+/tx --command '{ "op": "bill_tip", "id": 1, "percent": 18 }'
+/tx --command '{ "op": "bill_tip", "id": 1, "amount": 5, "split_between": "trac1bob..." }'
 ```
 
-### Add a note
+List / stats:
 ```bash
-/tx --command '{ "op": "bill_note", "id": 1, "text": "Paid in cash at the table." }'
-```
-
-### Export bill as JSON
-```bash
-/tx --command '{ "op": "bill_export", "id": 1 }'
-```
-
-### List bills (with optional filters)
-```bash
-/tx --command '{ "op": "bill_list", "limit": 10 }'
-/tx --command '{ "op": "bill_list", "limit": 20, "currency": "USD" }'
-/tx --command '{ "op": "bill_list", "limit": 20, "tag": "food" }'
-/tx --command '{ "op": "bill_list", "limit": 20, "creator_address": "trac1..." }'
-```
-
-### Global stats
-```bash
+/tx --command '{ "op": "bill_list", "limit": 20, "currency": "USD", "closed": false, "settled": false }'
 /tx --command '{ "op": "bill_stats" }'
 ```
 
-### Update a bill (creator only, while open)
-
+Archive lifecycle:
 ```bash
-/tx --command '{ "op": "bill_update", "id": 1, "title": "Team Lunch", "currency": "EUR" }'
-/tx --command '{ "op": "bill_update", "id": 1, "tags": "lunch,team" }'
+/tx --command '{ "op": "bill_archive", "id": 1 }'
+/tx --command '{ "op": "bill_unarchive", "id": 1 }'
 ```
 
-### Reverse your own settlement
-
+Edit an item in-place:
 ```bash
-/tx --command '{ "op": "bill_unsettle", "id": 1 }'
+/tx --command '{ "op": "bill_edit_item", "id": 1, "item_index": 0, "description": "Salad", "amount": 15 }'
+/tx --command '{ "op": "bill_edit_item", "id": 1, "item_index": 1, "split_between": "trac1bob..." }'
 ```
 
-### Reopen a closed bill (creator only)
-
+Debt simplification (who owes whom):
 ```bash
-/tx --command '{ "op": "bill_reopen", "id": 1 }'
+/tx --command '{ "op": "bill_debt", "id": 1 }'
 ```
 
-### Add a tip (flat amount or percentage of total)
+Copy a bill's items to a new bill:
+```bash
+/tx --command '{ "op": "bill_copy", "id": 1, "title": "March Dinner", "creator_name": "Alice" }'
+/tx --command '{ "op": "bill_copy", "id": 1, "title": "Repeat Trip", "creator_name": "Alice", "currency": "EUR" }'
+```
+
+Set or clear a payment deadline:
+```bash
+/tx --command '{ "op": "bill_deadline", "id": 1, "deadline": "2026-03-01" }'
+/tx --command '{ "op": "bill_deadline", "id": 1 }'
+```
+
+Rename yourself on a bill:
 
 ```bash
-/tx --command '{ "op": "bill_tip", "id": 1, "amount": 10 }'
-/tx --command '{ "op": "bill_tip", "id": 1, "percent": 18 }'
+/tx --command '{ "op": "bill_rename", "id": 1, "name": "Alexandra" }'
+```
+
+Editors (permissions):
+```bash
+/tx --command '{ "op": "bill_add_editor", "id": 1, "editor_address": "trac1..." }'
+/tx --command '{ "op": "bill_remove_editor", "id": 1, "editor_address": "trac1..." }'
+/tx --command '{ "op": "bill_list_editors", "id": 1 }'
+```
+
+Receipt hash anchoring:
+```bash
+/tx --command '{ "op": "bill_anchor_receipt", "id": 1, "hash": "abcd1234...", "note": "receipt photo" }'
+```
+
+Invite codes (join without knowing bill id):
+```bash
+/tx --command '{ "op": "bill_set_invite", "id": 1, "code": "DINNER-2026", "ttl_sec": 86400 }'
+/tx --command '{ "op": "bill_join_code", "code": "DINNER-2026", "name": "Bob" }'
+```
+
+Templates (recurring):
+```bash
+/tx --command '{ "op": "template_save", "id": 1, "name": "Monthly dinner" }'
+/tx --command '{ "op": "template_list", "limit": 10 }'
+/tx --command '{ "op": "template_get", "template_id": 1 }'
+/tx --command '{ "op": "template_create", "template_id": 1, "creator_name": "Alice", "title": "April dinner" }'
+```
+
+Groups (collections of bills):
+```bash
+/tx --command '{ "op": "group_create", "name": "NYC Trip" }'
+/tx --command '{ "op": "group_add_bill", "group_id": 1, "bill_id": 3 }'
+/tx --command '{ "op": "group_get", "group_id": 1 }'
+/tx --command '{ "op": "group_list", "limit": 10 }'
 ```
 
 ---
 
-## Example session: Alice, Bob, Carol
+## What Is App-Specific
 
-- **Alice** creates the bill with tags and adds items:
-  - `/tx --command '{ "op": "bill_create", "title": "Weekend BBQ", "currency": "USD", "creator_name": "Alice", "tags": "food,weekend" }'`
-  - `/tx --command '{ "op": "bill_add_item", "id": 1, "description": "Grill", "amount": 45 }'`
-  - `/tx --command '{ "op": "bill_add_item", "id": 1, "description": "Sides", "amount": 21 }'`
-
-- **Bob** and **Carol** join:
-  - Bob: `/tx --command '{ "op": "bill_join", "id": 1, "name": "Bob" }'`
-  - Carol: `/tx --command '{ "op": "bill_join", "id": 1, "name": "Carol" }'`
-
-- **Alice** adds a note and checks the split:
-  - `/tx --command '{ "op": "bill_note", "id": 1, "text": "Split evenly between the three of us." }'`
-  - `/tx --command '{ "op": "bill_get", "id": 1 }'` → Total 66, 3 participants → **22 per person**.
-
-- All three settle (optional proof):
-  - Alice: `/tx --command '{ "op": "bill_settle", "id": 1, "proof": "cash" }'`
-  - Bob: `/tx --command '{ "op": "bill_settle", "id": 1 }'`
-  - Carol: `/tx --command '{ "op": "bill_settle", "id": 1 }'`
-
-- **Alice** closes the bill and exports:
-  - `/tx --command '{ "op": "bill_close", "id": 1 }'`
-  - `/tx --command '{ "op": "bill_export", "id": 1 }'`
-
-- After the last settle, the contract logs: **Bill fully settled!**
-
----
-
-## Competition links
-
-- Intercom (template): [https://github.com/Trac-Systems/intercom](https://github.com/Trac-Systems/intercom)
-- Awesome Intercom (accepted apps): [https://github.com/Trac-Systems/awesome-intercom](https://github.com/Trac-Systems/awesome-intercom)
-
----
-
-## What this repo is
-
-- A **fork** of Trac-Systems/intercom with the default contract/protocol replaced by **ReceiptSplit**: 12 commands (create, join, add_item, remove_item, settle, close, leave, note, get, export, list, stats), with tags, notes, settlement proof, and list filters.
-- Uses the same **Pear** runtime, subnet, and sidechannel stack; only `contract/contract.js` and `contract/protocol.js` are app-specific.
-- For agent and operational details, see **`SKILL.md`** in this repo.
+- `contract/contract.js`: ReceiptSplit business logic
+- `contract/protocol.js`: command mapping and CLI command help
+- runtime/network stack remains Intercom/Pear-based
