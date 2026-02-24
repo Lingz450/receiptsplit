@@ -99,7 +99,8 @@ class SampleProtocol extends Protocol {
 
   /**
    * ReceiptSplit: map tx commands to contract functions.
-   * Commands: bill_create, bill_join, bill_add_item, bill_settle, bill_get, bill_list
+   * Commands: bill_create, bill_join, bill_add_item, bill_remove_item, bill_settle, bill_close,
+   *          bill_leave, bill_note, bill_get, bill_export, bill_list, bill_stats
    */
   mapTxCommand(command) {
     let obj = { type: '', value: null };
@@ -111,7 +112,8 @@ class SampleProtocol extends Protocol {
       obj.value = {
         title: json.title ?? '',
         currency: json.currency ?? '',
-        creator_name: json.creator_name ?? ''
+        creator_name: json.creator_name ?? '',
+        tags: json.tags ?? ''
       };
       return obj;
     }
@@ -129,9 +131,29 @@ class SampleProtocol extends Protocol {
       };
       return obj;
     }
+    if (json.op === 'bill_remove_item') {
+      obj.type = 'billRemoveItem';
+      obj.value = { id: json.id ?? 0, item_index: json.item_index ?? 0 };
+      return obj;
+    }
     if (json.op === 'bill_settle') {
       obj.type = 'billSettle';
+      obj.value = { id: json.id ?? 0, proof: json.proof ?? '' };
+      return obj;
+    }
+    if (json.op === 'bill_close') {
+      obj.type = 'billClose';
       obj.value = { id: json.id ?? 0 };
+      return obj;
+    }
+    if (json.op === 'bill_leave') {
+      obj.type = 'billLeave';
+      obj.value = { id: json.id ?? 0 };
+      return obj;
+    }
+    if (json.op === 'bill_note') {
+      obj.type = 'billNote';
+      obj.value = { id: json.id ?? 0, text: json.text ?? '' };
       return obj;
     }
     if (json.op === 'bill_get') {
@@ -139,9 +161,49 @@ class SampleProtocol extends Protocol {
       obj.value = { id: json.id ?? 0 };
       return obj;
     }
+    if (json.op === 'bill_export') {
+      obj.type = 'billExport';
+      obj.value = { id: json.id ?? 0 };
+      return obj;
+    }
     if (json.op === 'bill_list') {
       obj.type = 'billList';
-      obj.value = { limit: json.limit ?? 10 };
+      obj.value = {
+        limit: json.limit ?? 10,
+        currency: json.currency ?? '',
+        tag: json.tag ?? '',
+        creator_address: json.creator_address ?? ''
+      };
+      return obj;
+    }
+    if (json.op === 'bill_stats') {
+      obj.type = 'billStats';
+      obj.value = {};
+      return obj;
+    }
+    if (json.op === 'bill_update') {
+      obj.type = 'billUpdate';
+      obj.value = { id: json.id ?? 0 };
+      if (json.title !== undefined) obj.value.title = json.title;
+      if (json.currency !== undefined) obj.value.currency = json.currency;
+      if (json.tags !== undefined) obj.value.tags = json.tags;
+      return obj;
+    }
+    if (json.op === 'bill_unsettle') {
+      obj.type = 'billUnsettle';
+      obj.value = { id: json.id ?? 0 };
+      return obj;
+    }
+    if (json.op === 'bill_reopen') {
+      obj.type = 'billReopen';
+      obj.value = { id: json.id ?? 0 };
+      return obj;
+    }
+    if (json.op === 'bill_tip') {
+      obj.type = 'billTip';
+      obj.value = { id: json.id ?? 0 };
+      if (json.amount !== undefined) obj.value.amount = json.amount;
+      if (json.percent !== undefined) obj.value.percent = json.percent;
       return obj;
     }
     return null;
@@ -150,12 +212,23 @@ class SampleProtocol extends Protocol {
   async printOptions() {
     console.log(' ');
     console.log('- ReceiptSplit Commands:');
-    console.log('- /tx --command \'{ "op": "bill_create", "title": "Dinner", "currency": "USD", "creator_name": "Alice" }\'');
+    console.log('- /tx --command \'{ "op": "bill_create", "title": "Dinner", "currency": "USD", "creator_name": "Alice", "tags": "food,team" }\'');
     console.log('- /tx --command \'{ "op": "bill_join", "id": 1, "name": "Bob" }\'');
     console.log('- /tx --command \'{ "op": "bill_add_item", "id": 1, "description": "Pizza", "amount": 30 }\'');
-    console.log('- /tx --command \'{ "op": "bill_settle", "id": 1 }\'');
+    console.log('- /tx --command \'{ "op": "bill_remove_item", "id": 1, "item_index": 0 }\'');
+    console.log('- /tx --command \'{ "op": "bill_settle", "id": 1, "proof": "txid-abc123" }\'');
+    console.log('- /tx --command \'{ "op": "bill_close", "id": 1 }\'');
+    console.log('- /tx --command \'{ "op": "bill_leave", "id": 1 }\'');
+    console.log('- /tx --command \'{ "op": "bill_note", "id": 1, "text": "Paid in cash" }\'');
     console.log('- /tx --command \'{ "op": "bill_get", "id": 1 }\'');
-    console.log('- /tx --command \'{ "op": "bill_list", "limit": 10 }\'');
+    console.log('- /tx --command \'{ "op": "bill_export", "id": 1 }\'');
+    console.log('- /tx --command \'{ "op": "bill_list", "limit": 10, "currency": "USD", "tag": "food" }\'');
+    console.log('- /tx --command \'{ "op": "bill_stats" }\'');
+    console.log('- /tx --command \'{ "op": "bill_update", "id": 1, "title": "New Title", "currency": "EUR", "tags": "food" }\'');
+    console.log('- /tx --command \'{ "op": "bill_unsettle", "id": 1 }\'');
+    console.log('- /tx --command \'{ "op": "bill_reopen", "id": 1 }\'');
+    console.log('- /tx --command \'{ "op": "bill_tip", "id": 1, "amount": 10 }\'');
+    console.log('- /tx --command \'{ "op": "bill_tip", "id": 1, "percent": 18 }\'');
     console.log(' ');
     console.log('- Utilities:');
     console.log('- /get --key " " [--confirmed true|false] | reads subnet state key (confirmed defaults to true).');

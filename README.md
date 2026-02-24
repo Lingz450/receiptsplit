@@ -1,14 +1,6 @@
 # ReceiptSplit — P2P Bill Splitting on Trac Network
 
-A peer-to-peer bill splitting app built on [Trac Network](https://github.com/Trac-Systems/intercom)'s **Intercom** stack. Create shared bills, add participants, add line items, and track who has settled — all over deterministic replicated contract state. No central server.
-
-**Features:**
-- **bill_create** — Create a new bill (title, currency, creator name).
-- **bill_join** — Join an existing bill as a participant (by bill id and your name).
-- **bill_add_item** — Add a line item (description, amount); per-person split recalculates automatically.
-- **bill_settle** — Mark yourself as paid/settled on a bill.
-- **bill_get** — Fetch full bill details including total, per-person amount, and settled status.
-- **bill_list** — List recent bills (optional limit, max 50).
+A **full-featured** peer-to-peer bill splitting app built on [Trac Network](https://github.com/Trac-Systems/intercom)'s **Intercom** stack. Create shared bills, add participants, add or remove line items, attach notes, lock bills, and track who has settled — with optional settlement proof. All state is deterministic and replicated; no central server.
 
 Participants are identified by peer address (`tx.address`). When all participants are settled, the contract logs **"Bill fully settled!"**.
 
@@ -17,6 +9,29 @@ Participants are identified by peer address (`tx.address`). When all participant
 ## Trac Address (for payouts)
 
 trac1ey2t8yahmxqf6zfhgrfnd82pth7lxcve4zxrq3eqhufhgyky5jeqmg6raw
+
+---
+
+## Features (16 commands)
+
+| Command | Description |
+|--------|-------------|
+| **bill_create** | Create a bill (title, currency, creator name, optional tags). |
+| **bill_join** | Join a bill as participant (id, name). Rejected if bill is closed. |
+| **bill_add_item** | Add a line item (id, description, amount). Per-person split recalculates. |
+| **bill_remove_item** | Remove a line item by index (id, item_index). Creator/participants; bill must be open. |
+| **bill_settle** | Mark yourself as paid (id, optional proof e.g. txid or "paid cash"). |
+| **bill_close** | Creator locks the bill: no more joins or item add/remove. |
+| **bill_leave** | Leave a bill (id). Only if you haven’t settled; creator cannot leave. |
+| **bill_note** | Add a note to a bill (id, text). Up to 10 notes per bill. |
+| **bill_get** | Full bill details: items, participants, notes, tags, total, perPerson, settled, closed. |
+| **bill_export** | Export bill as JSON string (for backup or sharing). |
+| **bill_list** | List bills with optional filters: limit, currency, tag, creator_address. |
+| **bill_stats** | Global stats: total bills, participants, items, amount, closed/settled counts, by currency. |
+| **bill_update** | Creator updates a bill’s title, currency, and/or tags (bill must be open). |
+| **bill_unsettle** | Reverse your own settlement (bill must not be fully settled yet). |
+| **bill_reopen** | Creator reopens a closed bill (allows joins and item changes again). |
+| **bill_tip** | Add a tip to the bill — flat amount or percentage of current total. |
 
 ---
 
@@ -39,48 +54,108 @@ pear run . --peer-store-name joiner --msb-store-name joiner-msb \
 
 ---
 
-## Usage (all 6 commands)
+## Usage (all 12 commands)
 
 Trigger transactions with `/tx --command '...'`. Use `--sim 1` to dry-run before broadcasting.
 
-### 1. Create a bill
+### Create a bill (with optional tags)
 ```bash
-/tx --command '{ "op": "bill_create", "title": "Team Dinner", "currency": "USD", "creator_name": "Alice" }'
+/tx --command '{ "op": "bill_create", "title": "Team Dinner", "currency": "USD", "creator_name": "Alice", "tags": "food,team" }'
 ```
 
-### 2. Join a bill
+### Join a bill
 ```bash
 /tx --command '{ "op": "bill_join", "id": 1, "name": "Bob" }'
 /tx --command '{ "op": "bill_join", "id": 1, "name": "Carol" }'
 ```
 
-### 3. Add line items
+### Add line items
 ```bash
 /tx --command '{ "op": "bill_add_item", "id": 1, "description": "Pizza", "amount": 36 }'
 /tx --command '{ "op": "bill_add_item", "id": 1, "description": "Drinks", "amount": 12 }'
 ```
 
-### 4. Get bill (total, per-person split, settled status)
+### Remove a line item (by index, 0-based)
+```bash
+/tx --command '{ "op": "bill_remove_item", "id": 1, "item_index": 0 }'
+```
+
+### Get bill (full details)
 ```bash
 /tx --command '{ "op": "bill_get", "id": 1 }'
 ```
 
-### 5. Mark yourself as settled
+### Settle with optional proof
 ```bash
 /tx --command '{ "op": "bill_settle", "id": 1 }'
+/tx --command '{ "op": "bill_settle", "id": 1, "proof": "txid-abc123" }'
 ```
 
-### 6. List recent bills
+### Close a bill (creator only)
+```bash
+/tx --command '{ "op": "bill_close", "id": 1 }'
+```
+
+### Leave a bill (non-creator, only if not settled)
+```bash
+/tx --command '{ "op": "bill_leave", "id": 1 }'
+```
+
+### Add a note
+```bash
+/tx --command '{ "op": "bill_note", "id": 1, "text": "Paid in cash at the table." }'
+```
+
+### Export bill as JSON
+```bash
+/tx --command '{ "op": "bill_export", "id": 1 }'
+```
+
+### List bills (with optional filters)
 ```bash
 /tx --command '{ "op": "bill_list", "limit": 10 }'
+/tx --command '{ "op": "bill_list", "limit": 20, "currency": "USD" }'
+/tx --command '{ "op": "bill_list", "limit": 20, "tag": "food" }'
+/tx --command '{ "op": "bill_list", "limit": 20, "creator_address": "trac1..." }'
+```
+
+### Global stats
+```bash
+/tx --command '{ "op": "bill_stats" }'
+```
+
+### Update a bill (creator only, while open)
+
+```bash
+/tx --command '{ "op": "bill_update", "id": 1, "title": "Team Lunch", "currency": "EUR" }'
+/tx --command '{ "op": "bill_update", "id": 1, "tags": "lunch,team" }'
+```
+
+### Reverse your own settlement
+
+```bash
+/tx --command '{ "op": "bill_unsettle", "id": 1 }'
+```
+
+### Reopen a closed bill (creator only)
+
+```bash
+/tx --command '{ "op": "bill_reopen", "id": 1 }'
+```
+
+### Add a tip (flat amount or percentage of total)
+
+```bash
+/tx --command '{ "op": "bill_tip", "id": 1, "amount": 10 }'
+/tx --command '{ "op": "bill_tip", "id": 1, "percent": 18 }'
 ```
 
 ---
 
 ## Example session: Alice, Bob, Carol
 
-- **Alice** creates the bill and adds items:
-  - `/tx --command '{ "op": "bill_create", "title": "Weekend BBQ", "currency": "USD", "creator_name": "Alice" }'`
+- **Alice** creates the bill with tags and adds items:
+  - `/tx --command '{ "op": "bill_create", "title": "Weekend BBQ", "currency": "USD", "creator_name": "Alice", "tags": "food,weekend" }'`
   - `/tx --command '{ "op": "bill_add_item", "id": 1, "description": "Grill", "amount": 45 }'`
   - `/tx --command '{ "op": "bill_add_item", "id": 1, "description": "Sides", "amount": 21 }'`
 
@@ -88,14 +163,18 @@ Trigger transactions with `/tx --command '...'`. Use `--sim 1` to dry-run before
   - Bob: `/tx --command '{ "op": "bill_join", "id": 1, "name": "Bob" }'`
   - Carol: `/tx --command '{ "op": "bill_join", "id": 1, "name": "Carol" }'`
 
-- **Alice** checks the split:
-  - `/tx --command '{ "op": "bill_get", "id": 1 }'`
-  - Total 66, 3 participants → **22 per person**. Each sees who has settled.
+- **Alice** adds a note and checks the split:
+  - `/tx --command '{ "op": "bill_note", "id": 1, "text": "Split evenly between the three of us." }'`
+  - `/tx --command '{ "op": "bill_get", "id": 1 }'` → Total 66, 3 participants → **22 per person**.
 
-- All three settle one by one:
-  - Alice: `/tx --command '{ "op": "bill_settle", "id": 1 }'`
+- All three settle (optional proof):
+  - Alice: `/tx --command '{ "op": "bill_settle", "id": 1, "proof": "cash" }'`
   - Bob: `/tx --command '{ "op": "bill_settle", "id": 1 }'`
   - Carol: `/tx --command '{ "op": "bill_settle", "id": 1 }'`
+
+- **Alice** closes the bill and exports:
+  - `/tx --command '{ "op": "bill_close", "id": 1 }'`
+  - `/tx --command '{ "op": "bill_export", "id": 1 }'`
 
 - After the last settle, the contract logs: **Bill fully settled!**
 
@@ -110,6 +189,6 @@ Trigger transactions with `/tx --command '...'`. Use `--sim 1` to dry-run before
 
 ## What this repo is
 
-- A **fork** of Trac-Systems/intercom with the default contract/protocol replaced by **ReceiptSplit** (bill create/join/add_item/settle/get/list).
+- A **fork** of Trac-Systems/intercom with the default contract/protocol replaced by **ReceiptSplit**: 12 commands (create, join, add_item, remove_item, settle, close, leave, note, get, export, list, stats), with tags, notes, settlement proof, and list filters.
 - Uses the same **Pear** runtime, subnet, and sidechannel stack; only `contract/contract.js` and `contract/protocol.js` are app-specific.
 - For agent and operational details, see **`SKILL.md`** in this repo.
