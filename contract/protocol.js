@@ -136,6 +136,26 @@ class SampleProtocol extends Protocol {
       obj.value = { id: json.id ?? 0, item_index: json.item_index ?? 0 };
       return obj;
     }
+    if (json.op === 'bill_assign_item') {
+      obj.type = 'billAssignItem';
+      obj.value = { id: json.id ?? 0, item_index: json.item_index ?? 0, assignees: json.assignees ?? '' };
+      return obj;
+    }
+    if (json.op === 'bill_set_payer') {
+      obj.type = 'billSetPayer';
+      obj.value = { id: json.id ?? 0, item_index: json.item_index ?? 0, payer_address: json.payer_address ?? '' };
+      return obj;
+    }
+    if (json.op === 'bill_set_split_mode') {
+      obj.type = 'billSetSplitMode';
+      obj.value = { id: json.id ?? 0, mode: json.mode ?? '' };
+      return obj;
+    }
+    if (json.op === 'bill_set_weight') {
+      obj.type = 'billSetWeight';
+      obj.value = { id: json.id ?? 0, weight: json.weight ?? 1 };
+      return obj;
+    }
     if (json.op === 'bill_settle') {
       obj.type = 'billSettle';
       obj.value = { id: json.id ?? 0, proof: json.proof ?? '' };
@@ -163,6 +183,11 @@ class SampleProtocol extends Protocol {
     }
     if (json.op === 'bill_export') {
       obj.type = 'billExport';
+      obj.value = { id: json.id ?? 0 };
+      return obj;
+    }
+    if (json.op === 'bill_balances') {
+      obj.type = 'billBalances';
       obj.value = { id: json.id ?? 0 };
       return obj;
     }
@@ -216,11 +241,16 @@ class SampleProtocol extends Protocol {
     console.log('- /tx --command \'{ "op": "bill_join", "id": 1, "name": "Bob" }\'');
     console.log('- /tx --command \'{ "op": "bill_add_item", "id": 1, "description": "Pizza", "amount": 30 }\'');
     console.log('- /tx --command \'{ "op": "bill_remove_item", "id": 1, "item_index": 0 }\'');
+    console.log('- /tx --command \'{ "op": "bill_assign_item", "id": 1, "item_index": 0, "assignees": "trac1...,trac1..." }\'');
+    console.log('- /tx --command \'{ "op": "bill_set_payer", "id": 1, "item_index": 0, "payer_address": "trac1..." }\'');
+    console.log('- /tx --command \'{ "op": "bill_set_split_mode", "id": 1, "mode": "weights" }\'');
+    console.log('- /tx --command \'{ "op": "bill_set_weight", "id": 1, "weight": 2 }\'');
     console.log('- /tx --command \'{ "op": "bill_settle", "id": 1, "proof": "txid-abc123" }\'');
     console.log('- /tx --command \'{ "op": "bill_close", "id": 1 }\'');
     console.log('- /tx --command \'{ "op": "bill_leave", "id": 1 }\'');
     console.log('- /tx --command \'{ "op": "bill_note", "id": 1, "text": "Paid in cash" }\'');
     console.log('- /tx --command \'{ "op": "bill_get", "id": 1 }\'');
+    console.log('- /tx --command \'{ "op": "bill_balances", "id": 1 }\'');
     console.log('- /tx --command \'{ "op": "bill_export", "id": 1 }\'');
     console.log('- /tx --command \'{ "op": "bill_list", "limit": 10, "currency": "USD", "tag": "food" }\'');
     console.log('- /tx --command \'{ "op": "bill_stats" }\'');

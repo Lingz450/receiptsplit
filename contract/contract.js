@@ -3,7 +3,14 @@ import {Contract} from 'trac-peer'
 class SampleContract extends Contract {
   /**
    * ReceiptSplit — P2P Bill Splitting on Trac Network.
-   * Extended: close, leave, remove_item, notes, tags, settlement proof, export, stats, list filters.
+   *
+   * Massive upgrade pack:
+   * - Split modes: equal, weights, itemized
+   * - Participant weights
+   * - Items track payer + assignees
+   * - bill_balances: compute paid/owed/net per participant
+   *
+   * Still includes: tags, notes, close/leave, settlement proof, export, list filters, stats.
    */
   constructor(protocol, options = {}) {
     super(protocol, options);
@@ -34,7 +41,47 @@ class SampleContract extends Contract {
         $$type: 'object',
         id: { type: 'number', integer: true, min: 1 },
         description: { type: 'string', min: 1, max: 200 },
-        amount: { type: 'number', min: 0 }
+        amount: { type: 'number', min: 0 },
+        payer_address: { type: 'string', optional: true, max: 128 },
+        assignees: { type: 'string', optional: true, max: 500 }
+      }
+    });
+
+    this.addSchema('billAssignItem', {
+      value: {
+        $$strict: true,
+        $$type: 'object',
+        id: { type: 'number', integer: true, min: 1 },
+        item_index: { type: 'number', integer: true, min: 0 },
+        assignees: { type: 'string', min: 1, max: 500 }
+      }
+    });
+
+    this.addSchema('billSetPayer', {
+      value: {
+        $$strict: true,
+        $$type: 'object',
+        id: { type: 'number', integer: true, min: 1 },
+        item_index: { type: 'number', integer: true, min: 0 },
+        payer_address: { type: 'string', optional: true, max: 128 }
+      }
+    });
+
+    this.addSchema('billSetSplitMode', {
+      value: {
+        $$strict: true,
+        $$type: 'object',
+        id: { type: 'number', integer: true, min: 1 },
+        mode: { type: 'string', min: 1, max: 16 }
+      }
+    });
+
+    this.addSchema('billSetWeight', {
+      value: {
+        $$strict: true,
+        $$type: 'object',
+        id: { type: 'number', integer: true, min: 1 },
+        weight: { type: 'number', min: 0.1, max: 100 }
       }
     });
 
@@ -82,6 +129,14 @@ class SampleContract extends Contract {
     });
 
     this.addSchema('billGet', {
+      value: {
+        $$strict: true,
+        $$type: 'object',
+        id: { type: 'number', integer: true, min: 1 }
+      }
+    });
+
+    this.addSchema('billBalances', {
       value: {
         $$strict: true,
         $$type: 'object',
@@ -172,10 +227,98 @@ class SampleContract extends Contract {
     return tagsStr.split(',').map(t => t.trim()).filter(t => t.length > 0).slice(0, 5);
   }
 
+  _parseAssignees(assigneesStr) {
+    if (!assigneesStr || typeof assigneesStr !== 'string') return [];
+    const raw = assigneesStr.split(',').map(a => a.trim()).filter(a => a.length > 0);
+    const unique = [];
+    for (const a of raw) {
+      if (!unique.includes(a)) unique.push(a);
+      if (unique.length >= 20) break;
+    }
+    return unique;
+  }
+
+  _participantsByAddress(bill) {
+    const map = {};
+    for (const p of Array.isArray(bill.participants) ? bill.participants : []) {
+      if (p && p.address) map[p.address] = p;
+    }
+    return map;
+  }
+
+  _isCreator(bill) {
+    return (bill && bill.creator_address) && (this.address === bill.creator_address);
+  }
+
+  _computeBalances(bill) {
+    const participants = Array.isArray(bill.participants) ? bill.participants : [];
+    const items = Array.isArray(bill.items) ? bill.items : [];
+    const mode = String(bill.split_mode || 'equal');
+    const settled = bill.settled && typeof bill.settled === 'object' ? bill.settled : {};
+
+    const total = items.reduce((sum, it) => sum + (Number(it.amount) || 0), 0);
+
+    const paidBy = {};
+    for (const p of participants) {
+      if (p && p.address) paidBy[p.address] = 0;
+    }
+    for (const it of items) {
+      const payer = it?.payer_address || null;
+      if (payer && paidBy[payer] !== undefined) paidBy[payer] += (Number(it.amount) || 0);
+    }
+
+    const owedBy = {};
+    for (const p of participants) {
+      if (p && p.address) owedBy[p.address] = 0;
+    }
+
+    if (mode === 'weights') {
+      const weights = participants.map(p => ({ address: p?.address, w: Number(p?.weight) || 1 })).filter(x => x.address);
+      const sumW = weights.reduce((s, x) => s + (x.w > 0 ? x.w : 0), 0) || 1;
+      for (const x of weights) {
+        owedBy[x.address] = total * ((x.w > 0 ? x.w : 0) / sumW);
+      }
+    } else if (mode === 'itemized') {
+      const allAddrs = participants.map(p => p?.address).filter(Boolean);
+      for (const it of items) {
+        const amt = Number(it.amount) || 0;
+        let ass = Array.isArray(it.assignees) ? it.assignees.filter(Boolean) : [];
+        if (ass.length === 0) ass = allAddrs;
+        const per = ass.length > 0 ? (amt / ass.length) : 0;
+        for (const a of ass) {
+          if (owedBy[a] !== undefined) owedBy[a] += per;
+        }
+      }
+    } else {
+      const count = Math.max(1, participants.length);
+      const per = total / count;
+      for (const p of participants) {
+        if (p && p.address) owedBy[p.address] = per;
+      }
+    }
+
+    const balances = participants.map(p => {
+      const addr = p?.address ?? null;
+      const paid = addr && paidBy[addr] !== undefined ? paidBy[addr] : 0;
+      const owed = addr && owedBy[addr] !== undefined ? owedBy[addr] : 0;
+      const net = paid - owed;
+      return {
+        address: addr,
+        name: p?.name ?? null,
+        weight: Number(p?.weight) || 1,
+        paid,
+        owed,
+        net,
+        settled: !!(addr && settled[addr])
+      };
+    });
+
+    return { mode, total, balances };
+  }
+
   async billCreate() {
     const counter = (await this.get('bill_counter')) ?? 0;
     const nextId = counter + 1;
-    const currentTime = await this.get('currentTime');
     const tags = this._parseTags(this.value.tags);
 
     const bill = {
@@ -184,12 +327,13 @@ class SampleContract extends Contract {
       currency: this.value.currency,
       creator_name: this.value.creator_name,
       creator_address: this.address ?? null,
-      participants: [{ address: this.address ?? null, name: this.value.creator_name }],
+      participants: [{ address: this.address ?? null, name: this.value.creator_name, weight: 1 }],
       items: [],
       settled: {},
       notes: [],
       closed: false,
-      tags
+      tags,
+      split_mode: 'equal'
     };
 
     await this.put(`bill:${nextId}`, bill);
@@ -199,7 +343,7 @@ class SampleContract extends Contract {
     ids = [nextId].concat(Array.isArray(ids) ? ids : []).slice(0, 50);
     await this.put('bill_ids', ids);
 
-    console.log('bill_created:', { id: nextId, title: bill.title, currency: bill.currency, tags });
+    console.log('bill_created:', { id: nextId, title: bill.title, currency: bill.currency, tags, split_mode: bill.split_mode });
   }
 
   async billJoin() {
@@ -221,7 +365,7 @@ class SampleContract extends Contract {
     const cloned = this.protocol.safeClone(bill);
     this.assert(cloned !== null, new Error('Clone failed'));
     cloned.participants = Array.isArray(cloned.participants) ? cloned.participants.slice() : [];
-    cloned.participants.push({ address: addr, name });
+    cloned.participants.push({ address: addr, name, weight: 1 });
 
     await this.put(`bill:${id}`, cloned);
     console.log('bill_joined:', { id, name, address: addr });
@@ -236,13 +380,20 @@ class SampleContract extends Contract {
     const cloned = this.protocol.safeClone(bill);
     this.assert(cloned !== null, new Error('Clone failed'));
     cloned.items = Array.isArray(cloned.items) ? cloned.items.slice() : [];
+    const participantsBy = this._participantsByAddress(bill);
+    const payer = (this.value.payer_address && String(this.value.payer_address).trim()) || (this.address ?? null);
+    this.assert(payer && participantsBy[payer], new Error('Invalid payer (must be a participant)'));
+    const assignees = this._parseAssignees(this.value.assignees);
+    for (const a of assignees) this.assert(!!participantsBy[a], new Error('Invalid assignee (must be a participant)'));
     cloned.items.push({
       description: this.value.description,
-      amount: Number(this.value.amount)
+      amount: Number(this.value.amount),
+      payer_address: payer,
+      assignees
     });
 
     await this.put(`bill:${id}`, cloned);
-    console.log('bill_item_added:', { id, description: this.value.description, amount: this.value.amount });
+    console.log('bill_item_added:', { id, description: this.value.description, amount: this.value.amount, payer_address: payer, assignees });
   }
 
   async billRemoveItem() {
@@ -262,6 +413,97 @@ class SampleContract extends Contract {
 
     await this.put(`bill:${id}`, cloned);
     console.log('bill_item_removed:', { id, item_index: idx });
+  }
+
+  async billAssignItem() {
+    const id = this.value.id;
+    const bill = await this.get(`bill:${id}`);
+    this.assert(bill !== null, new Error('Bill not found'));
+    this.assert(!bill.closed, new Error('Bill is closed'));
+    this.assert(this._isCreator(bill), new Error('Only creator can assign items'));
+
+    const idx = this.value.item_index;
+    const items = Array.isArray(bill.items) ? bill.items : [];
+    this.assert(idx >= 0 && idx < items.length, new Error('Invalid item index'));
+
+    const participantsBy = this._participantsByAddress(bill);
+    const assignees = this._parseAssignees(this.value.assignees);
+    this.assert(assignees.length > 0, new Error('Assignees required'));
+    for (const a of assignees) this.assert(!!participantsBy[a], new Error('Invalid assignee (must be a participant)'));
+
+    const cloned = this.protocol.safeClone(bill);
+    this.assert(cloned !== null, new Error('Clone failed'));
+    cloned.items = items.map(it => this.protocol.safeClone(it) || it);
+    if (!cloned.items[idx]) cloned.items[idx] = {};
+    cloned.items[idx].assignees = assignees;
+
+    await this.put(`bill:${id}`, cloned);
+    console.log('bill_item_assigned:', { id, item_index: idx, assignees });
+  }
+
+  async billSetPayer() {
+    const id = this.value.id;
+    const bill = await this.get(`bill:${id}`);
+    this.assert(bill !== null, new Error('Bill not found'));
+    this.assert(!bill.closed, new Error('Bill is closed'));
+    this.assert(this._isCreator(bill), new Error('Only creator can set payer'));
+
+    const idx = this.value.item_index;
+    const items = Array.isArray(bill.items) ? bill.items : [];
+    this.assert(idx >= 0 && idx < items.length, new Error('Invalid item index'));
+
+    const participantsBy = this._participantsByAddress(bill);
+    const payer = (this.value.payer_address && String(this.value.payer_address).trim()) || (this.address ?? null);
+    this.assert(payer && participantsBy[payer], new Error('Invalid payer (must be a participant)'));
+
+    const cloned = this.protocol.safeClone(bill);
+    this.assert(cloned !== null, new Error('Clone failed'));
+    cloned.items = items.map(it => this.protocol.safeClone(it) || it);
+    if (!cloned.items[idx]) cloned.items[idx] = {};
+    cloned.items[idx].payer_address = payer;
+
+    await this.put(`bill:${id}`, cloned);
+    console.log('bill_item_payer_set:', { id, item_index: idx, payer_address: payer });
+  }
+
+  async billSetSplitMode() {
+    const id = this.value.id;
+    const bill = await this.get(`bill:${id}`);
+    this.assert(bill !== null, new Error('Bill not found'));
+    this.assert(this._isCreator(bill), new Error('Only creator can set split mode'));
+
+    const mode = String(this.value.mode || '').trim();
+    this.assert(mode === 'equal' || mode === 'weights' || mode === 'itemized', new Error('Invalid mode: equal|weights|itemized'));
+
+    const cloned = this.protocol.safeClone(bill);
+    this.assert(cloned !== null, new Error('Clone failed'));
+    cloned.split_mode = mode;
+
+    await this.put(`bill:${id}`, cloned);
+    console.log('bill_split_mode_set:', { id, mode });
+  }
+
+  async billSetWeight() {
+    const id = this.value.id;
+    const bill = await this.get(`bill:${id}`);
+    this.assert(bill !== null, new Error('Bill not found'));
+
+    const addr = this.address ?? null;
+    const participants = Array.isArray(bill.participants) ? bill.participants : [];
+    const idx = participants.findIndex(p => p && p.address === addr);
+    this.assert(idx >= 0, new Error('Not a participant'));
+
+    const weight = Number(this.value.weight);
+    this.assert(Number.isFinite(weight) && weight > 0, new Error('Invalid weight'));
+
+    const cloned = this.protocol.safeClone(bill);
+    this.assert(cloned !== null, new Error('Clone failed'));
+    cloned.participants = participants.map(p => this.protocol.safeClone(p) || p);
+    if (!cloned.participants[idx]) cloned.participants[idx] = {};
+    cloned.participants[idx].weight = weight;
+
+    await this.put(`bill:${id}`, cloned);
+    console.log('bill_weight_set:', { id, address: addr, weight });
   }
 
   async billSettle() {
@@ -347,16 +589,16 @@ class SampleContract extends Contract {
       return;
     }
 
-    const total = Array.isArray(bill.items)
-      ? bill.items.reduce((sum, it) => sum + (Number(it.amount) || 0), 0)
-      : 0;
-    const count = Array.isArray(bill.participants) ? Math.max(1, bill.participants.length) : 1;
-    const perPerson = total / count;
+    const computed = this._computeBalances(bill);
+    const total = computed.total;
     const settled = bill.settled && typeof bill.settled === 'object' ? bill.settled : {};
     const allSettled =
       Array.isArray(bill.participants) &&
       bill.participants.length > 0 &&
       bill.participants.every(p => p && p.address && settled[p.address]);
+    const perPerson = computed.mode === 'equal'
+      ? (Array.isArray(bill.participants) && bill.participants.length > 0 ? total / bill.participants.length : total)
+      : null;
 
     const out = {
       id: bill.id,
@@ -369,13 +611,33 @@ class SampleContract extends Contract {
       notes: bill.notes ?? [],
       tags: bill.tags ?? [],
       closed: !!bill.closed,
+      split_mode: computed.mode,
       total,
       perPerson,
+      balances: computed.balances,
       settled: settled,
       allSettled
     };
     console.log('bill_get:', out);
     if (allSettled) console.log('Bill fully settled!');
+  }
+
+  async billBalances() {
+    const id = this.value.id;
+    const bill = await this.get(`bill:${id}`);
+    if (bill === null) {
+      console.log('bill_balances: not found', id);
+      return;
+    }
+    const computed = this._computeBalances(bill);
+    console.log('bill_balances:', {
+      id: bill.id,
+      title: bill.title,
+      currency: bill.currency,
+      split_mode: computed.mode,
+      total: computed.total,
+      balances: computed.balances
+    });
   }
 
   async billExport() {
@@ -385,17 +647,16 @@ class SampleContract extends Contract {
       console.log('bill_export: not found', id);
       return;
     }
-
-    const total = Array.isArray(bill.items)
-      ? bill.items.reduce((sum, it) => sum + (Number(it.amount) || 0), 0)
-      : 0;
-    const count = Array.isArray(bill.participants) ? Math.max(1, bill.participants.length) : 1;
-    const perPerson = total / count;
+    const computed = this._computeBalances(bill);
+    const total = computed.total;
     const settled = bill.settled && typeof bill.settled === 'object' ? bill.settled : {};
     const allSettled =
       Array.isArray(bill.participants) &&
       bill.participants.length > 0 &&
       bill.participants.every(p => p && p.address && settled[p.address]);
+    const perPerson = computed.mode === 'equal'
+      ? (Array.isArray(bill.participants) && bill.participants.length > 0 ? total / bill.participants.length : total)
+      : null;
 
     const exportData = {
       id: bill.id,
@@ -408,8 +669,10 @@ class SampleContract extends Contract {
       notes: bill.notes ?? [],
       tags: bill.tags ?? [],
       closed: !!bill.closed,
+      split_mode: computed.mode,
       total,
       perPerson,
+      balances: computed.balances,
       settled,
       allSettled,
       exported_at: await this.get('currentTime') ?? null

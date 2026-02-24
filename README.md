@@ -12,7 +12,7 @@ trac1ey2t8yahmxqf6zfhgrfnd82pth7lxcve4zxrq3eqhufhgyky5jeqmg6raw
 
 ---
 
-## Features (16 commands)
+## Features (17 commands)
 
 | Command | Description |
 |--------|-------------|
@@ -20,11 +20,16 @@ trac1ey2t8yahmxqf6zfhgrfnd82pth7lxcve4zxrq3eqhufhgyky5jeqmg6raw
 | **bill_join** | Join a bill as participant (id, name). Rejected if bill is closed. |
 | **bill_add_item** | Add a line item (id, description, amount). Per-person split recalculates. |
 | **bill_remove_item** | Remove a line item by index (id, item_index). Creator/participants; bill must be open. |
+| **bill_assign_item** | Assign an item to specific participants (id, item_index, assignees). Used for itemized splits. |
+| **bill_set_payer** | Set who paid for an item (id, item_index, payer_address). |
+| **bill_set_split_mode** | Set split mode: `equal`, `weights`, or `itemized` (creator only). |
+| **bill_set_weight** | Set your own weight for weighted splits (id, weight). |
 | **bill_settle** | Mark yourself as paid (id, optional proof e.g. txid or "paid cash"). |
 | **bill_close** | Creator locks the bill: no more joins or item add/remove. |
 | **bill_leave** | Leave a bill (id). Only if you haven’t settled; creator cannot leave. |
 | **bill_note** | Add a note to a bill (id, text). Up to 10 notes per bill. |
 | **bill_get** | Full bill details: items, participants, notes, tags, total, perPerson, settled, closed. |
+| **bill_balances** | Show paid/owed/net per participant for the current split mode. |
 | **bill_export** | Export bill as JSON string (for backup or sharing). |
 | **bill_list** | List bills with optional filters: limit, currency, tag, creator_address. |
 | **bill_stats** | Global stats: total bills, participants, items, amount, closed/settled counts, by currency. |
@@ -54,7 +59,7 @@ pear run . --peer-store-name joiner --msb-store-name joiner-msb \
 
 ---
 
-## Usage (all 12 commands)
+## Usage (all 17 commands)
 
 Trigger transactions with `/tx --command '...'`. Use `--sim 1` to dry-run before broadcasting.
 
@@ -80,9 +85,43 @@ Trigger transactions with `/tx --command '...'`. Use `--sim 1` to dry-run before
 /tx --command '{ "op": "bill_remove_item", "id": 1, "item_index": 0 }'
 ```
 
+### Advanced split mode (creator) + weights (each participant)
+
+Set split mode:
+```bash
+/tx --command '{ "op": "bill_set_split_mode", "id": 1, "mode": "weights" }'
+```
+
+Each participant sets their own weight:
+```bash
+/tx --command '{ "op": "bill_set_weight", "id": 1, "weight": 2 }'
+```
+
+### Itemized splitting (assign items to specific people)
+
+Switch to itemized:
+```bash
+/tx --command '{ "op": "bill_set_split_mode", "id": 1, "mode": "itemized" }'
+```
+
+Assign item index 0 to specific participants (comma-separated peer addresses):
+```bash
+/tx --command '{ "op": "bill_assign_item", "id": 1, "item_index": 0, "assignees": "trac1...,trac1..." }'
+```
+
+Set who paid for item index 0:
+```bash
+/tx --command '{ "op": "bill_set_payer", "id": 1, "item_index": 0, "payer_address": "trac1..." }'
+```
+
 ### Get bill (full details)
 ```bash
 /tx --command '{ "op": "bill_get", "id": 1 }'
+```
+
+### Show balances (paid/owed/net)
+```bash
+/tx --command '{ "op": "bill_balances", "id": 1 }'
 ```
 
 ### Settle with optional proof
